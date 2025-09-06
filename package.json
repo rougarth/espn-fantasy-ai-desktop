@@ -1,0 +1,20 @@
+{
+  "name": "espn-fantasy-ai-desktop",
+  "version": "0.1.0",
+  "description": "ESPN Fantasy AI — app desktop simples (login automático por navegador, zero configuração)",
+  "main": "src/main.js",
+  "author": "Você",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron-forge start",
+    "make": "electron-forge make",
+    "package": "electron-forge package"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.4.0",
+    "@electron-forge/maker-squirrel": "^7.4.0",
+    "@electron-forge/maker-zip": "^7.4.0",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.4.0",
+    "electron": "^31.2.0"
+  }
+}
