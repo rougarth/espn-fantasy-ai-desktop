@@ -16,8 +16,13 @@ jobs:
 
       - run: npm install
 
+      # Importa configuração do Electron Forge
+      - run: npx electron-forge import
+
+      # Gera o instalador
       - run: npm run make
 
+      # Publica o .exe como Artifact
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
