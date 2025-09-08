@@ -1,4 +1,4 @@
-// src/main.js — ESPN Fantasy AI (Electron) — COMPLETO
+// src/main.js — ESPN Fantasy AI (Electron) — SIMPLES & AJUSTADO
 
 const { app, BrowserWindow, ipcMain, session } = require('electron');
 const path = require('path');
@@ -7,8 +7,13 @@ let mainWindow;
 let authWindow;
 let creds = { espn_s2: null, SWID: null };
 
+// UA de navegador real (ajuda a evitar HTML/landing)
+const BROWSER_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+  '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
 // -------------------------------------------------------------
-// Window principal
+// Janela principal
 // -------------------------------------------------------------
 async function createWindow () {
   mainWindow = new BrowserWindow({
@@ -20,6 +25,13 @@ async function createWindow () {
       nodeIntegration: false,
     }
   });
+
+  // Força UA “de navegador” em todas as requests do app
+  session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    details.requestHeaders['User-Agent'] = BROWSER_UA;
+    callback({ requestHeaders: details.requestHeaders });
+  });
+
   await mainWindow.loadFile(path.join(__dirname, 'index.html'));
 }
 
@@ -50,19 +62,22 @@ async function pollCookies(targetSession){
 }
 
 function headers(){
-  // Cabeçalhos "fortes" que ajudam a obter JSON da API de fantasy
   return {
-    'User-Agent': 'ESPN-Fantasy-AI-Desktop/0.1',
-    'Accept': 'application/json',
+    'User-Agent': BROWSER_UA,
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9,pt;q=0.8',
     'Referer': 'https://fantasy.espn.com',
     'Origin': 'https://fantasy.espn.com',
     'x-fantasy-platform': 'kona',
-    'x-fantasy-source': 'kona'
+    'x-fantasy-source': 'kona',
+    'Connection': 'keep-alive',
+    'Pragma': 'no-cache',
+    'Cache-Control': 'no-cache'
   };
 }
 
 // -------------------------------------------------------------
-// Login (abre ESPN, usuário faz login normal; app captura cookies)
+// Login (abre ESPN; usuário faz login normal; app captura cookies)
 // -------------------------------------------------------------
 ipcMain.handle('espn:login', async () => {
   return new Promise(async (resolve) => {
@@ -71,6 +86,13 @@ ipcMain.handle('espn:login', async () => {
       height: 800,
       webPreferences: { nodeIntegration: false, contextIsolation: true }
     });
+
+    // Também força UA na janela de login
+    authWindow.webContents.session.webRequest.onBeforeSendHeaders((details, callback) => {
+      details.requestHeaders['User-Agent'] = BROWSER_UA;
+      callback({ requestHeaders: details.requestHeaders });
+    });
+
     authWindow.loadURL('https://www.espn.com/');
 
     let tries = 0;
@@ -96,7 +118,7 @@ ipcMain.handle('espn:login', async () => {
 ipcMain.handle('espn:status', async () => ({ authenticated: !!(creds.espn_s2 && creds.SWID) }));
 
 // -------------------------------------------------------------
-// Fetch centralizado: sempre lê texto, tenta JSON, retorna diagnóstico
+// Fetch centralizado: lê texto; tenta JSON; diagnostica HTML
 // -------------------------------------------------------------
 async function fetchESPN(url, extraHeaders = {}) {
   if (!creds.espn_s2 || !creds.SWID) {
@@ -122,12 +144,10 @@ async function fetchESPN(url, extraHeaders = {}) {
     bodyText = await res.text();
   } catch { bodyText = ''; }
 
-  // 401/403: sessão inválida/expirada
   if (status === 401 || status === 403) {
     return { ok:false, reason:'invalid', message:'Sessão expirada. Clique em Conectar com ESPN novamente.', status, contentType };
   }
 
-  // Tenta JSON a partir do texto
   try {
     const data = JSON.parse(bodyText);
     return { ok:true, data, status, contentType };
@@ -138,40 +158,44 @@ async function fetchESPN(url, extraHeaders = {}) {
       message:'Formato inesperado',
       status,
       contentType,
-      raw: bodyText.slice(0, 500) // trecho p/ diagnóstico se necessário
+      raw: bodyText.slice(0, 500)
     };
   }
 }
 
 // -------------------------------------------------------------
-// IPC: chamadas reais da ESPN (sempre dados reais, zero invenção)
+// IPC: chamadas reais da ESPN (tenta host de leitura primeiro)
 // -------------------------------------------------------------
-
-// Ligas do usuário (usa filtro na query)
 ipcMain.handle('espn:getLeagues', async () => {
   const y = currentYear();
-  const base = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues`;
   const filterObj = { memberships: { membershipTypes: ["OWNER","LEAGUE_MANAGER","MEMBER"], seasonIds:[y] } };
   const filterQP = encodeURIComponent(JSON.stringify(filterObj));
-  const url = `${base}?x-fantasy-filter=${filterQP}`;
-  return fetchESPN(url);
+
+  const candidates = [
+    `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues?x-fantasy-filter=${filterQP}`,
+    `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues?x-fantasy-filter=${filterQP}`
+  ];
+
+  for (const url of candidates) {
+    const r = await fetchESPN(url);
+    if (r && r.ok && r.data) return r;
+    if (r && r.reason === 'invalid') return r;
+  }
+  return { ok:false, reason:'indisponivel', message:'Não foi possível obter as ligas agora (resposta HTML).' };
 });
 
-// Times (mTeam)
 ipcMain.handle('espn:getTeams', async (_e, leagueId) => {
   const y = currentYear();
   const url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues/${leagueId}?view=mTeam`;
   return fetchESPN(url);
 });
 
-// Classificação (mStandings)
 ipcMain.handle('espn:getStandings', async (_e, leagueId) => {
   const y = currentYear();
   const url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues/${leagueId}?view=mStandings`;
   return fetchESPN(url);
 });
 
-// Confrontos (mMatchup) — aceita scoringPeriodId
 ipcMain.handle('espn:getMatchups', async (_e, { leagueId, scoringPeriodId }) => {
   const y = currentYear();
   let url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues/${leagueId}?view=mMatchup`;
@@ -179,7 +203,6 @@ ipcMain.handle('espn:getMatchups', async (_e, { leagueId, scoringPeriodId }) => 
   return fetchESPN(url);
 });
 
-// Roster (mRoster) — aceita scoringPeriodId
 ipcMain.handle('espn:getRoster', async (_e, { leagueId, teamId, scoringPeriodId }) => {
   const y = currentYear();
   let url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues/${leagueId}?view=mRoster`;
