@@ -96,10 +96,9 @@ async function fetchESPN(url, extraHeaders = {}) {
 
 ipcMain.handle('espn:getLeagues', async () => {
   const y = currentYear();
-  const base = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues`;
-  const filter = encodeURIComponent(JSON.stringify({ memberships: { membershipTypes: ["OWNER","LEAGUE_MANAGER","MEMBER"], seasonIds:[y] } }));
-  const url = `${base}?x-fantasy-filter=${filter}`;
-  return fetchESPN(url);
+  const url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues`;
+  const filter = { memberships: { membershipTypes: ["OWNER","LEAGUE_MANAGER","MEMBER"], seasonIds:[y] } };
+  return fetchESPN(url, { 'x-fantasy-filter': JSON.stringify(filter) });
 });
 ipcMain.handle('espn:getTeams', async (_e, leagueId) => {
   const y = currentYear();
