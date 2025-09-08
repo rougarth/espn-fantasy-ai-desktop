@@ -64,61 +64,49 @@ ipcMain.handle('espn:status', async () => ({ authenticated: !!(creds.espn_s2 && 
 function headers(){ return { 'User-Agent': 'ESPN-Fantasy-AI-Desktop/0.1' }; }
 
 async function fetchESPN(url, extraHeaders = {}) {
-  if (!creds.espn_s2 || !creds.SWID) return { ok:false, reason:'invalid', message:'Não autenticado' };
+  if (!creds.espn_s2 || !creds.SWID) {
+    return { ok:false, reason:'invalid', message:'Não autenticado' };
+  }
 
   const cookieHeader = `espn_s2=${creds.espn_s2}; SWID=${creds.SWID}`;
+
   const res = await fetch(url, {
-    headers: { 
+    headers: {
       ...headers(),
       'Cookie': cookieHeader,
+      'Accept': 'application/json',
+      'x-fantasy-platform': 'kona',
+      'x-fantasy-source': 'kona',
       ...extraHeaders
     },
     redirect: 'follow'
   });
 
-  // 401/403: sessão inválida
-  if (res.status === 401 || res.status === 403) {
-    return { ok: false, reason: 'invalid', message: 'Sessão expirada. Clique em Conectar com ESPN novamente.' };
+  const contentType = res.headers.get('content-type') || '';
+  const status = res.status;
+  let bodyText = '';
+
+  try {
+    bodyText = await res.text();
+  } catch { bodyText = ''; }
+
+  // 401/403: sessão inválida/expirada
+  if (status === 401 || status === 403) {
+    return { ok:false, reason:'invalid', message:'Sessão expirada. Clique em Conectar com ESPN novamente.', status, contentType };
   }
 
-  // Tenta JSON, se falhar retorna texto bruto (pra debug)
-  let text;
+  // Tenta parsear JSON a partir do texto
   try {
-    const data = await res.json();
-    return { ok: true, data };
-  } catch (e) {
-    try {
-      text = await res.text();
-    } catch { text = ''; }
-    return { ok: false, reason: 'indisponivel', message: 'Formato inesperado', raw: text?.slice(0, 400) };
+    const data = JSON.parse(bodyText);
+    return { ok:true, data, status, contentType };
+  } catch {
+    return {
+      ok:false,
+      reason:'indisponivel',
+      message:'Formato inesperado',
+      status,
+      contentType,
+      raw: bodyText.slice(0, 500) // mostra começo da resposta p/ diagnosticar
+    };
   }
 }
-
-ipcMain.handle('espn:getLeagues', async () => {
-  const y = currentYear();
-  const url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues`;
-  const filter = { memberships: { membershipTypes: ["OWNER","LEAGUE_MANAGER","MEMBER"], seasonIds:[y] } };
-  return fetchESPN(url, { 'x-fantasy-filter': JSON.stringify(filter) });
-});
-ipcMain.handle('espn:getTeams', async (_e, leagueId) => {
-  const y = currentYear();
-  const url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues/${leagueId}?view=mTeam`;
-  return fetchESPN(url);
-});
-ipcMain.handle('espn:getStandings', async (_e, leagueId) => {
-  const y = currentYear();
-  const url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues/${leagueId}?view=mStandings`;
-  return fetchESPN(url);
-});
-ipcMain.handle('espn:getMatchups', async (_e, { leagueId, scoringPeriodId }) => {
-  const y = currentYear();
-  let url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues/${leagueId}?view=mMatchup`;
-  if (scoringPeriodId) url += `&scoringPeriodId=${scoringPeriodId}`;
-  return fetchESPN(url);
-});
-ipcMain.handle('espn:getRoster', async (_e, { leagueId, teamId, scoringPeriodId }) => {
-  const y = currentYear();
-  let url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues/${leagueId}?view=mRoster`;
-  if (scoringPeriodId) url += `&scoringPeriodId=${scoringPeriodId}`;
-  return fetchESPN(url);
-});
