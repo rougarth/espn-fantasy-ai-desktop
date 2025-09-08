@@ -63,14 +63,35 @@ ipcMain.handle('espn:status', async () => ({ authenticated: !!(creds.espn_s2 && 
 
 function headers(){ return { 'User-Agent': 'ESPN-Fantasy-AI-Desktop/0.1' }; }
 
-async function fetchESPN(url){
+async function fetchESPN(url, extraHeaders = {}) {
   if (!creds.espn_s2 || !creds.SWID) return { ok:false, reason:'invalid', message:'Não autenticado' };
+
   const cookieHeader = `espn_s2=${creds.espn_s2}; SWID=${creds.SWID}`;
-  const res = await fetch(url, { headers: { ...headers(), 'Cookie': cookieHeader }});
-  if (res.status === 401 || res.status === 403) return { ok: false, reason: 'invalid', message: 'Cookies inválidos' };
-  if (!res.ok) return { ok: false, reason: 'indisponivel', message: 'Dados temporariamente indisponíveis' };
-  try { const data = await res.json(); return { ok: true, data }; }
-  catch(e){ return { ok:false, reason:'indisponivel', message:'Formato inesperado' }; }
+  const res = await fetch(url, {
+    headers: { 
+      ...headers(),
+      'Cookie': cookieHeader,
+      ...extraHeaders
+    },
+    redirect: 'follow'
+  });
+
+  // 401/403: sessão inválida
+  if (res.status === 401 || res.status === 403) {
+    return { ok: false, reason: 'invalid', message: 'Sessão expirada. Clique em Conectar com ESPN novamente.' };
+  }
+
+  // Tenta JSON, se falhar retorna texto bruto (pra debug)
+  let text;
+  try {
+    const data = await res.json();
+    return { ok: true, data };
+  } catch (e) {
+    try {
+      text = await res.text();
+    } catch { text = ''; }
+    return { ok: false, reason: 'indisponivel', message: 'Formato inesperado', raw: text?.slice(0, 400) };
+  }
 }
 
 ipcMain.handle('espn:getLeagues', async () => {
