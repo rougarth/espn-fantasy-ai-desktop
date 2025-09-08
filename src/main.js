@@ -1,4 +1,4 @@
-// src/main.js — ESPN Fantasy AI (Electron) — SIMPLES & AJUSTADO
+// src/main.js — ESPN Fantasy AI (Electron) — POST robusto para ligas
 
 const { app, BrowserWindow, ipcMain, session } = require('electron');
 const path = require('path');
@@ -7,7 +7,7 @@ let mainWindow;
 let authWindow;
 let creds = { espn_s2: null, SWID: null };
 
-// UA de navegador real (ajuda a evitar HTML/landing)
+// UA de navegador real (ajuda a evitar landing HTML)
 const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -61,7 +61,7 @@ async function pollCookies(targetSession){
   return { espn_s2: s2v, SWID: swv };
 }
 
-function headers(){
+function baseHeaders(){
   return {
     'User-Agent': BROWSER_UA,
     'Accept': 'application/json, text/plain, */*',
@@ -87,7 +87,7 @@ ipcMain.handle('espn:login', async () => {
       webPreferences: { nodeIntegration: false, contextIsolation: true }
     });
 
-    // Também força UA na janela de login
+    // força UA na janela de login também
     authWindow.webContents.session.webRequest.onBeforeSendHeaders((details, callback) => {
       details.requestHeaders['User-Agent'] = BROWSER_UA;
       callback({ requestHeaders: details.requestHeaders });
@@ -118,31 +118,17 @@ ipcMain.handle('espn:login', async () => {
 ipcMain.handle('espn:status', async () => ({ authenticated: !!(creds.espn_s2 && creds.SWID) }));
 
 // -------------------------------------------------------------
-// Fetch centralizado: lê texto; tenta JSON; diagnostica HTML
+// Fetch helpers: GET e POST que SEMPRE leem texto e tentam JSON
 // -------------------------------------------------------------
-async function fetchESPN(url, extraHeaders = {}) {
-  if (!creds.espn_s2 || !creds.SWID) {
-    return { ok:false, reason:'invalid', message:'Não autenticado' };
-  }
+function cookieHeaderValue(){
+  return `espn_s2=${creds.espn_s2}; SWID=${creds.SWID}`;
+}
 
-  const cookieHeader = `espn_s2=${creds.espn_s2}; SWID=${creds.SWID}`;
-
-  const res = await fetch(url, {
-    headers: {
-      ...headers(),
-      'Cookie': cookieHeader,
-      ...extraHeaders
-    },
-    redirect: 'follow'
-  });
-
+async function parseResponse(res){
   const contentType = res.headers.get('content-type') || '';
   const status = res.status;
   let bodyText = '';
-
-  try {
-    bodyText = await res.text();
-  } catch { bodyText = ''; }
+  try { bodyText = await res.text(); } catch { bodyText = ''; }
 
   if (status === 401 || status === 403) {
     return { ok:false, reason:'invalid', message:'Sessão expirada. Clique em Conectar com ESPN novamente.', status, contentType };
@@ -152,50 +138,76 @@ async function fetchESPN(url, extraHeaders = {}) {
     const data = JSON.parse(bodyText);
     return { ok:true, data, status, contentType };
   } catch {
-    return {
-      ok:false,
-      reason:'indisponivel',
-      message:'Formato inesperado',
-      status,
-      contentType,
-      raw: bodyText.slice(0, 500)
-    };
+    return { ok:false, reason:'indisponivel', message:'Formato inesperado', status, contentType, raw: bodyText.slice(0, 500) };
   }
 }
 
+async function fetchESPN(url, extraHeaders = {}) {
+  if (!creds.espn_s2 || !creds.SWID) return { ok:false, reason:'invalid', message:'Não autenticado' };
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: { ...baseHeaders(), 'Cookie': cookieHeaderValue(), ...extraHeaders },
+    redirect: 'follow'
+  });
+  return parseResponse(res);
+}
+
+async function fetchESPN_POST(url, body = {}, extraHeaders = {}) {
+  if (!creds.espn_s2 || !creds.SWID) return { ok:false, reason:'invalid', message:'Não autenticado' };
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { ...baseHeaders(), 'Cookie': cookieHeaderValue(), 'Content-Type': 'application/json', ...extraHeaders },
+    body: JSON.stringify(body),
+    redirect: 'follow'
+  });
+  return parseResponse(res);
+}
+
 // -------------------------------------------------------------
-// IPC: chamadas reais da ESPN (tenta host de leitura primeiro)
+// IPC: chamadas reais da ESPN
 // -------------------------------------------------------------
+
+// LIGAS (usa POST + fallbacks de host e de forma de filtro)
 ipcMain.handle('espn:getLeagues', async () => {
   const y = currentYear();
   const filterObj = { memberships: { membershipTypes: ["OWNER","LEAGUE_MANAGER","MEMBER"], seasonIds:[y] } };
-  const filterQP = encodeURIComponent(JSON.stringify(filterObj));
 
-  const candidates = [
-    `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues?x-fantasy-filter=${filterQP}`,
-    `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues?x-fantasy-filter=${filterQP}`
+  const hosts = [
+    `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues`,
+    `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues`
   ];
 
-  for (const url of candidates) {
-    const r = await fetchESPN(url);
+  // tenta: (1) POST com header x-fantasy-filter, (2) POST com body
+  for (const base of hosts) {
+    // 1) header
+    let r = await fetchESPN_POST(base, {}, { 'x-fantasy-filter': JSON.stringify(filterObj) });
+    if (r && r.ok && r.data) return r;
+    if (r && r.reason === 'invalid') return r;
+
+    // 2) body
+    r = await fetchESPN_POST(base, { 'x-fantasy-filter': JSON.stringify(filterObj) });
     if (r && r.ok && r.data) return r;
     if (r && r.reason === 'invalid') return r;
   }
-  return { ok:false, reason:'indisponivel', message:'Não foi possível obter as ligas agora (resposta HTML).' };
+
+  return { ok:false, reason:'indisponivel', message:'Não foi possível obter as ligas agora (HTML/405).' };
 });
 
+// TIMES (GET padrão; se precisar trocamos para POST depois)
 ipcMain.handle('espn:getTeams', async (_e, leagueId) => {
   const y = currentYear();
   const url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues/${leagueId}?view=mTeam`;
   return fetchESPN(url);
 });
 
+// CLASSIFICAÇÃO
 ipcMain.handle('espn:getStandings', async (_e, leagueId) => {
   const y = currentYear();
   const url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues/${leagueId}?view=mStandings`;
   return fetchESPN(url);
 });
 
+// CONFRONTOS
 ipcMain.handle('espn:getMatchups', async (_e, { leagueId, scoringPeriodId }) => {
   const y = currentYear();
   let url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues/${leagueId}?view=mMatchup`;
@@ -203,6 +215,7 @@ ipcMain.handle('espn:getMatchups', async (_e, { leagueId, scoringPeriodId }) => 
   return fetchESPN(url);
 });
 
+// ROSTER
 ipcMain.handle('espn:getRoster', async (_e, { leagueId, teamId, scoringPeriodId }) => {
   const y = currentYear();
   let url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues/${leagueId}?view=mRoster`;
