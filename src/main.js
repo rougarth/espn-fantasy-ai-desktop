@@ -1,4 +1,4 @@
-// src/main.js — ESPN Fantasy AI (Electron) — POST robusto para ligas
+// src/main.js — ESPN Fantasy AI (Electron) — versão completa e simples
 
 const { app, BrowserWindow, ipcMain, session } = require('electron');
 const path = require('path');
@@ -7,7 +7,7 @@ let mainWindow;
 let authWindow;
 let creds = { espn_s2: null, SWID: null };
 
-// UA de navegador real (ajuda a evitar landing HTML)
+// UA de navegador real — evita páginas HTML/landing no fetch
 const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -26,7 +26,7 @@ async function createWindow () {
     }
   });
 
-  // Força UA “de navegador” em todas as requests do app
+  // força UA em TODAS as requests da app session
   session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
     details.requestHeaders['User-Agent'] = BROWSER_UA;
     callback({ requestHeaders: details.requestHeaders });
@@ -53,11 +53,20 @@ function currentYear(){
   return (d.getMonth() + 1) >= 3 ? d.getFullYear() : d.getFullYear() - 1;
 }
 
+// Lê cookies tanto de fantasy quanto de www (o que tiver válido primeiro)
 async function pollCookies(targetSession){
-  const s2 = await targetSession.cookies.get({ url: 'https://www.espn.com', name: 'espn_s2' });
-  const sw = await targetSession.cookies.get({ url: 'https://www.espn.com', name: 'SWID' });
-  const s2v = (s2 && s2[0] && s2[0].value) || null;
-  const swv = (sw && sw[0] && sw[0].value) || null;
+  const domains = ['https://fantasy.espn.com', 'https://www.espn.com'];
+  let s2v = null, swv = null;
+
+  for (const url of domains) {
+    try {
+      const s2 = await targetSession.cookies.get({ url, name: 'espn_s2' });
+      const sw = await targetSession.cookies.get({ url, name: 'SWID' });
+      if (!s2v && s2 && s2[0] && s2[0].value) s2v = s2[0].value;
+      if (!swv && sw && sw[0] && sw[0].value) swv = sw[0].value;
+      if (s2v && swv) break;
+    } catch(e) {}
+  }
   return { espn_s2: s2v, SWID: swv };
 }
 
@@ -76,8 +85,12 @@ function baseHeaders(){
   };
 }
 
+function cookieHeaderValue(){
+  return `espn_s2=${creds.espn_s2}; SWID=${creds.SWID}`;
+}
+
 // -------------------------------------------------------------
-// Login (abre ESPN; usuário faz login normal; app captura cookies)
+// Login — abre o site de fantasy (garante cookies no domínio certo)
 // -------------------------------------------------------------
 ipcMain.handle('espn:login', async () => {
   return new Promise(async (resolve) => {
@@ -93,7 +106,8 @@ ipcMain.handle('espn:login', async () => {
       callback({ requestHeaders: details.requestHeaders });
     });
 
-    authWindow.loadURL('https://www.espn.com/');
+    // abre primeiro o fantasy (não o www) para setar cookies válidos lá
+    authWindow.loadURL('https://fantasy.espn.com/');
 
     let tries = 0;
     const check = async () => {
@@ -118,12 +132,8 @@ ipcMain.handle('espn:login', async () => {
 ipcMain.handle('espn:status', async () => ({ authenticated: !!(creds.espn_s2 && creds.SWID) }));
 
 // -------------------------------------------------------------
-// Fetch helpers: GET e POST que SEMPRE leem texto e tentam JSON
+// Helpers de fetch: GET e POST — sempre leem texto e tentam JSON
 // -------------------------------------------------------------
-function cookieHeaderValue(){
-  return `espn_s2=${creds.espn_s2}; SWID=${creds.SWID}`;
-}
-
 async function parseResponse(res){
   const contentType = res.headers.get('content-type') || '';
   const status = res.status;
@@ -164,88 +174,66 @@ async function fetchESPN_POST(url, body = {}, extraHeaders = {}) {
 }
 
 // -------------------------------------------------------------
-// IPC: chamadas reais da ESPN
+// IPC — chamadas reais (sempre dados reais, sem invenção)
 // -------------------------------------------------------------
 
-// src/main.js — SUBSTITUIR APENAS ESTE BLOCO
-
+// Ligas do usuário — endpoint indicado: leagueHistory/members (com fallbacks)
+// Se falhar, faz um probe simples para confirmar autenticação.
 ipcMain.handle('espn:getLeagues', async () => {
   const y = currentYear();
-
-  // Tenta o endpoint correto nos dois hosts
   const urls = [
     'https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/members',
     'https://fantasy.espn.com/apis/v3/games/ffl/leagueHistory/members'
   ];
 
   for (const url of urls) {
-    const res = await fetchESPN(url, {
-      'Accept': 'application/json'
-    });
+    const res = await fetchESPN(url, { 'Accept': 'application/json' });
 
-    // Se veio JSON e é lista, filtra temporadas atuais/anteriores
     if (res && res.ok && Array.isArray(res.data)) {
-      const activeLeagues = res.data.filter((league) => {
-        const s =
-          league.seasonId ??
-          league.season ??
-          league.seasonYear ??
-          league.season_id ??
-          null;
+      const active = res.data.filter((l) => {
+        const s = l.seasonId ?? l.season ?? l.seasonYear ?? l.season_id ?? null;
         return s === y || s === y - 1;
       });
-
-      return {
-        ok: true,
-        data: activeLeagues,
-        status: res.status,
-        contentType: res.contentType
-      };
+      return { ok:true, data: active, status: res.status, contentType: res.contentType };
     }
-
-    // Sessão expirada? já retorna
-    if (res && res.reason === 'invalid') return res;
+    if (res && res.reason === 'invalid') return res; // sessão expirada
   }
 
-  // ✅ PLANO B (validação de autenticação, sem inventar liga)
-  // Se conseguimos ler players, os cookies estão válidos.
+  // Probe simples: se players responde, cookies estão bons
   const probeUrl = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/players?view=players_wl&limit=1`;
   const probe = await fetchESPN(probeUrl, { 'Accept': 'application/json' });
-
   if (probe && probe.ok) {
     return {
       ok: true,
-      data: [], // não inventamos liga; apenas confirmamos que está autenticado
+      data: [],
       status: probe.status,
       contentType: probe.contentType,
-      note: 'Autenticado com sucesso, mas leagueHistory/members não retornou ligas agora.'
+      note: 'Autenticado, mas leagueHistory/members não retornou ligas agora.'
     };
   }
 
-  // Falhou geral: devolve diagnóstico simples
   return {
-    ok: false,
-    reason: 'indisponivel',
-    message: 'Não foi possível obter suas ligas agora (leagueHistory/members retornou HTML/redirecionamento). Tente reconectar e abrir novamente.'
+    ok:false,
+    reason:'indisponivel',
+    message:'Não foi possível obter suas ligas agora (leagueHistory/members retornou HTML/redirecionamento). Clique em Conectar com ESPN e faça login novamente.'
   };
 });
 
-
-// TIMES (GET padrão; se precisar trocamos para POST depois)
+// Times (mTeam)
 ipcMain.handle('espn:getTeams', async (_e, leagueId) => {
   const y = currentYear();
   const url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues/${leagueId}?view=mTeam`;
   return fetchESPN(url);
 });
 
-// CLASSIFICAÇÃO
+// Classificação (mStandings)
 ipcMain.handle('espn:getStandings', async (_e, leagueId) => {
   const y = currentYear();
   const url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues/${leagueId}?view=mStandings`;
   return fetchESPN(url);
 });
 
-// CONFRONTOS
+// Confrontos (mMatchup)
 ipcMain.handle('espn:getMatchups', async (_e, { leagueId, scoringPeriodId }) => {
   const y = currentYear();
   let url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues/${leagueId}?view=mMatchup`;
@@ -253,7 +241,7 @@ ipcMain.handle('espn:getMatchups', async (_e, { leagueId, scoringPeriodId }) => 
   return fetchESPN(url);
 });
 
-// ROSTER
+// Roster (mRoster)
 ipcMain.handle('espn:getRoster', async (_e, { leagueId, teamId, scoringPeriodId }) => {
   const y = currentYear();
   let url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues/${leagueId}?view=mRoster`;
