@@ -167,31 +167,69 @@ async function fetchESPN_POST(url, body = {}, extraHeaders = {}) {
 // IPC: chamadas reais da ESPN
 // -------------------------------------------------------------
 
-// LIGAS (usa POST + fallbacks de host e de forma de filtro)
+// src/main.js — SUBSTITUIR APENAS ESTE BLOCO
+
 ipcMain.handle('espn:getLeagues', async () => {
   const y = currentYear();
-  const filterObj = { memberships: { membershipTypes: ["OWNER","LEAGUE_MANAGER","MEMBER"], seasonIds:[y] } };
 
-  const hosts = [
-    `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues`,
-    `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues`
+  // Tenta o endpoint correto nos dois hosts
+  const urls = [
+    'https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/members',
+    'https://fantasy.espn.com/apis/v3/games/ffl/leagueHistory/members'
   ];
 
-  // tenta: (1) POST com header x-fantasy-filter, (2) POST com body
-  for (const base of hosts) {
-    // 1) header
-    let r = await fetchESPN_POST(base, {}, { 'x-fantasy-filter': JSON.stringify(filterObj) });
-    if (r && r.ok && r.data) return r;
-    if (r && r.reason === 'invalid') return r;
+  for (const url of urls) {
+    const res = await fetchESPN(url, {
+      'Accept': 'application/json'
+    });
 
-    // 2) body
-    r = await fetchESPN_POST(base, { 'x-fantasy-filter': JSON.stringify(filterObj) });
-    if (r && r.ok && r.data) return r;
-    if (r && r.reason === 'invalid') return r;
+    // Se veio JSON e é lista, filtra temporadas atuais/anteriores
+    if (res && res.ok && Array.isArray(res.data)) {
+      const activeLeagues = res.data.filter((league) => {
+        const s =
+          league.seasonId ??
+          league.season ??
+          league.seasonYear ??
+          league.season_id ??
+          null;
+        return s === y || s === y - 1;
+      });
+
+      return {
+        ok: true,
+        data: activeLeagues,
+        status: res.status,
+        contentType: res.contentType
+      };
+    }
+
+    // Sessão expirada? já retorna
+    if (res && res.reason === 'invalid') return res;
   }
 
-  return { ok:false, reason:'indisponivel', message:'Não foi possível obter as ligas agora (HTML/405).' };
+  // ✅ PLANO B (validação de autenticação, sem inventar liga)
+  // Se conseguimos ler players, os cookies estão válidos.
+  const probeUrl = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/players?view=players_wl&limit=1`;
+  const probe = await fetchESPN(probeUrl, { 'Accept': 'application/json' });
+
+  if (probe && probe.ok) {
+    return {
+      ok: true,
+      data: [], // não inventamos liga; apenas confirmamos que está autenticado
+      status: probe.status,
+      contentType: probe.contentType,
+      note: 'Autenticado com sucesso, mas leagueHistory/members não retornou ligas agora.'
+    };
+  }
+
+  // Falhou geral: devolve diagnóstico simples
+  return {
+    ok: false,
+    reason: 'indisponivel',
+    message: 'Não foi possível obter suas ligas agora (leagueHistory/members retornou HTML/redirecionamento). Tente reconectar e abrir novamente.'
+  };
 });
+
 
 // TIMES (GET padrão; se precisar trocamos para POST depois)
 ipcMain.handle('espn:getTeams', async (_e, leagueId) => {
