@@ -3,21 +3,12 @@
   "version": "0.1.0",
   "productName": "ESPN Fantasy AI",
   "description": "App desktop simples para ESPN Fantasy (login via navegador embutido, dados reais).",
-  "author": "Rougarth <seu-email@dominio.com>",
-  "main": "src/main.js",
-  ...
-}
-{
-  "name": "espn-fantasy-ai-desktop",
-  "version": "0.1.0",
-  "productName": "ESPN Fantasy AI",
-  "description": "App desktop simples para ESPN Fantasy (login via navegador embutido, dados reais).",
+  "author": "Rougarth <you@example.com>",
   "main": "src/main.js",
   "scripts": {
     "start": "electron-forge start",
     "make": "electron-forge make",
-    "package": "electron-forge package",
-    "lint": "echo \"no lint\""
+    "package": "electron-forge package"
   },
   "dependencies": {
     "electron-squirrel-startup": "^1.0.0"
