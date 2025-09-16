@@ -3,6 +3,15 @@
   "version": "0.1.0",
   "productName": "ESPN Fantasy AI",
   "description": "App desktop simples para ESPN Fantasy (login via navegador embutido, dados reais).",
+  "author": "Rougarth <seu-email@dominio.com>",
+  "main": "src/main.js",
+  ...
+}
+{
+  "name": "espn-fantasy-ai-desktop",
+  "version": "0.1.0",
+  "productName": "ESPN Fantasy AI",
+  "description": "App desktop simples para ESPN Fantasy (login via navegador embutido, dados reais).",
   "main": "src/main.js",
   "scripts": {
     "start": "electron-forge start",
