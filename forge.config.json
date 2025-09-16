@@ -1,9 +1,19 @@
 {
-  "name": "@electron-forge/maker-squirrel",
-  "config": {
-    "name": "ESPN_Fantasy_AI",
-    "authors": "Rougarth",
-    "description": "ESPN Fantasy AI desktop",
-
-  }
+  "packagerConfig": {
+    "icon": "assets/icon"
+  },
+  "makers": [
+    {
+      "name": "@electron-forge/maker-squirrel",
+      "config": {
+        "name": "ESPN_Fantasy_AI",
+        "authors": "Rougarth",
+        "description": "ESPN Fantasy AI desktop"
+      }
+    },
+    { "name": "@electron-forge/maker-zip" }
+  ],
+  "plugins": [
+    "@electron-forge/plugin-auto-unpack-natives"
+  ]
 }
