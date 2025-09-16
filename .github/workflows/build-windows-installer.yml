@@ -1,0 +1,47 @@
+name: Build Windows Installer
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enable long paths (Windows)
+        run: git config --global core.longpaths true
+        shell: pwsh
+
+      - name: Setup Node LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install deps
+        run: |
+          if (Test-Path package-lock.json) { npm ci } else { npm install }
+        shell: pwsh
+
+      - name: Make Squirrel (verbose)
+        run: npx electron-forge make --targets=@electron-forge/maker-squirrel --platform=win32 --arch=x64 --verbose 2>&1 | tee build.log
+        shell: bash
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ESPN_Fantasy_AI-Setup
+          path: |
+            out/make/squirrel.windows/**/*.exe
+            out/make/**/*.nupkg
+            out/make/**/RELEASES
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
