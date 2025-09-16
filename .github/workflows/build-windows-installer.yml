@@ -15,19 +15,23 @@ jobs:
         run: git config --global core.longpaths true
         shell: pwsh
 
-      - name: Setup Node LTS
+      - name: Setup Node LTS (no cache)
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: '20'   # LTS estável
 
-      - name: Install deps
+      - name: Versions
         run: |
-          if (Test-Path package-lock.json) { npm ci } else { npm install }
+          node -v
+          npm -v
         shell: pwsh
 
-      - name: Make Squirrel (verbose)
-        run: npx electron-forge make --targets=@electron-forge/maker-squirrel --platform=win32 --arch=x64 --verbose 2>&1 | tee build.log
+      - name: Install deps
+        run: npm install
+        shell: pwsh
+
+      - name: Make (verbose)
+        run: npx electron-forge make --platform=win32 --arch=x64 --verbose 2>&1 | tee build.log
         shell: bash
 
       - name: Upload installer
@@ -38,6 +42,7 @@ jobs:
             out/make/squirrel.windows/**/*.exe
             out/make/**/*.nupkg
             out/make/**/RELEASES
+            out/make/zip/win32/x64/*.zip
 
       - name: Upload build log
         if: always()
