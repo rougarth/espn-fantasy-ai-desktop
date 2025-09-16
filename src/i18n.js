@@ -1,7 +1,5 @@
-
-// Simple in-app i18n (PT-BR and EN)
 const MESSAGES = {
-  "pt": {
+  pt: {
     TITLE: "ESPN Fantasy AI",
     SUBTITLE: "Login simples. Dados reais. Zero configuração.",
     STATUS: "Status",
@@ -21,15 +19,15 @@ const MESSAGES = {
     LOADING: "Carregando...",
     LOGIN_OPENING: "Abrindo ESPN para login...",
     LOGIN_ERROR: "Erro no login",
-    TIP: "Se algum item estiver indisponível, tente novamente mais tarde. Nunca mostramos dados fictícios.",
+    TIP: "Se algo estiver indisponível, tente mais tarde. Nunca mostramos dados fictícios.",
     LANGUAGE: "Idioma",
     DRAFT: "🏈 Draft Helper",
-    DRAFT_HINT: "Forneça IDs de jogadores (ex.: 8479,3916387) e veja recomendações sem invenção (em breve).",
+    DRAFT_HINT: "Informe IDs de jogadores (ex.: 8479,3916387).",
     RECOMMEND: "Recomendar"
   },
-  "en": {
+  en: {
     TITLE: "ESPN Fantasy AI",
-    SUBTITLE: "Simple login. Real data. Zero configuration.",
+    SUBTITLE: "Simple login. Real data. Zero config.",
     STATUS: "Status",
     DISCONNECTED: "Disconnected",
     CONNECTED: "Connected",
@@ -45,32 +43,24 @@ const MESSAGES = {
     ASK: "Ask",
     CONSULTING: "Fetching...",
     LOADING: "Loading...",
-    LOGIN_OPENING: "Opening ESPN for login...",
+    LOGIN_OPENING: "Opening ESPN login...",
     LOGIN_ERROR: "Login error",
-    TIP: "If anything is unavailable, try again later. We never show fabricated data.",
+    TIP: "If anything is unavailable, try later. We never fabricate data.",
     LANGUAGE: "Language",
     DRAFT: "🏈 Draft Helper",
-    DRAFT_HINT: "Provide player IDs (e.g., 8479,3916387) and see grounded recommendations (coming soon).",
+    DRAFT_HINT: "Provide player IDs (e.g., 8479,3916387).",
     RECOMMEND: "Recommend"
   }
 };
 
 function getDefaultLang(){
-  try {
-    const saved = localStorage.getItem('espn.lang');
-    if (saved) return saved;
-  } catch {}
+  try { const s = localStorage.getItem('espn.lang'); if (s) return s; } catch {}
   const nav = (navigator.language || 'en').toLowerCase();
-  if (nav.startsWith('pt')) return 'pt';
-  return 'en';
+  return nav.startsWith('pt') ? 'pt' : 'en';
 }
 
 let CUR_LANG = getDefaultLang();
-
-function t(key){
-  return (MESSAGES[CUR_LANG] && MESSAGES[CUR_LANG][key]) || (MESSAGES['en'][key]) || key;
-}
-
+function t(k){ return (MESSAGES[CUR_LANG] && MESSAGES[CUR_LANG][k]) || MESSAGES.en[k] || k; }
 function setLang(lang){
   CUR_LANG = (lang === 'pt' || lang === 'en') ? lang : 'en';
   try { localStorage.setItem('espn.lang', CUR_LANG); } catch {}
