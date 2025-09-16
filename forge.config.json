@@ -1,25 +1,18 @@
 {
-  "$schema": "https://raw.githubusercontent.com/electron/forge/main/packages/utils/types/src/schema.json",
   "packagerConfig": {
-    "asar": true,
-    "icon": "./assets/icon"
+    "icon": "assets/icon"
   },
   "makers": [
     {
       "name": "@electron-forge/maker-squirrel",
       "config": {
         "name": "ESPN_Fantasy_AI",
-        "setupIcon": "./assets/icon.ico"
+        "setupIcon": "assets/icon.ico"
       }
     },
-    {
-      "name": "@electron-forge/maker-zip"
-    }
+    { "name": "@electron-forge/maker-zip" }
   ],
   "plugins": [
-    [
-      "@electron-forge/plugin-auto-unpack-natives",
-      {}
-    ]
+    "@electron-forge/plugin-auto-unpack-natives"
   ]
 }
