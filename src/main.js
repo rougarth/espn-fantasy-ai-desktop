@@ -137,12 +137,27 @@ async function fetchESPN(url, extraHeaders = {}) {
   return parseResponse(res);
 }
 
-ipcMain.handle('espn:getLeagues', async () => {
+ipcMain.handle('espn:getLeagues', async ( ) => {
   const y = currentYear();
-  const urls = [
-    'https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/members',
-    'https://fantasy.espn.com/apis/v3/games/ffl/leagueHistory/members'
-  ];
+  
+  // ENDPOINT CORRETO que funciona
+  const url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues?view=mTeam`;
+  
+  const res = await fetchESPN(url, { 'Accept': 'application/json' } );
+  
+  if (res && res.ok && res.data) {
+    // Filtra apenas ligas onde o usuário é membro
+    const userLeagues = res.data.filter(league => 
+      league.members && league.members.length > 0
+    );
+    
+    return { ok: true, data: userLeagues, status: res.status, contentType: res.contentType };
+  }
+  
+  return res;
+});
+
+
   for (const url of urls) {
     const res = await fetchESPN(url, { 'Accept': 'application/json' });
     if (res && res.ok && Array.isArray(res.data)) {
