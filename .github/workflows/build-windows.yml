@@ -12,29 +12,27 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Enable long paths (Windows)
-        run: git config --global core.longpaths true
         shell: pwsh
+        run: git config --global core.longpaths true
 
-      - name: Setup Node LTS
+      - name: Setup Node LTS (no cache)
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
-      - name: Versions
+      - name: Show versions
+        shell: pwsh
         run: |
           node -v
           npm -v
-        shell: pwsh
 
       - name: Install deps
-        run: |
-          if (Test-Path package-lock.json) { npm ci } else { npm install }
         shell: pwsh
+        run: npm install
 
       - name: Make ZIP only (verbose)
-        run: npx electron-forge make --targets=@electron-forge/maker-zip --platform=win32 --arch=x64 --verbose 2>&1 | tee build.log
-        shell: bash
+        shell: pwsh
+        run: npx electron-forge make --targets=@electron-forge/maker-zip --platform=win32 --arch=x64 --verbose *>&1 | Tee-Object -FilePath build.log
 
       - name: Upload portable ZIP
         uses: actions/upload-artifact@v4
@@ -50,3 +48,4 @@ jobs:
         with:
           name: build-log
           path: build.log
+  
