@@ -1,4 +1,5 @@
 name: Build Windows Installer
+
 on:
   workflow_dispatch:
   push:
@@ -7,46 +8,28 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Enable long paths (Windows)
-        run: git config --global core.longpaths true
-        shell: pwsh
-
-      - name: Setup Node LTS (no cache)
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'   # LTS estável
-
-      - name: Versions
-        run: |
-          node -v
-          npm -v
-        shell: pwsh
-
-      - name: Install deps
-        run: npm install
-        shell: pwsh
-
-      - name: Make (verbose)
-        run: npx electron-forge make --platform=win32 --arch=x64 --verbose 2>&1 | tee build.log
-        shell: bash
-
-      - name: Upload installer
-        uses: actions/upload-artifact@v4
-        with:
-          name: ESPN_Fantasy_AI-Setup
-          path: |
-            out/make/squirrel.windows/**/*.exe
-            out/make/**/*.nupkg
-            out/make/**/RELEASES
-            out/make/zip/win32/x64/*.zip
-
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build.log
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        
+    - name: Install dependencies
+      run: |
+        npm install --save-dev electron electron-builder
+        npm install
+        
+    - name: Build Windows App
+      run: npx electron-builder --win --publish=never
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Upload Installer
+      uses: actions/upload-artifact@v4
+      with:
+        name: ESPN_Fantasy_AI_Windows
+        path: dist/*.exe
