@@ -84,14 +84,31 @@ ipcMain.handle('espn:login', async () => {
       callback({ requestHeaders: details.requestHeaders });
     });
 
-    async function navigateSequence(){
-      try {
-        await authWindow.loadURL('https://www.espn.com/login/');
-        setTimeout(async () => {
-          if (!authWindow || authWindow.isDestroyed()) return;
-          try { await authWindow.loadURL('https://fantasy.espn.com/'); } catch {}
-        }, 4000);
-      } catch(e) {}
+    async function navigateSequence() {
+  try {
+    // Abre ESPN no browser padrão do sistema
+    const { shell } = require('electron');
+    await shell.openExternal('https://www.espn.com/login/' );
+    
+    // Mostra instruções para o usuário
+    const { dialog } = require('electron');
+    const result = await dialog.showMessageBox(authWindow, {
+      type: 'info',
+      title: 'Login na ESPN',
+      message: 'Faça login na ESPN no seu navegador e clique OK quando terminar.',
+      buttons: ['OK', 'Cancelar']
+    });
+    
+    if (result.response === 0) {
+      // Usuário clicou OK, tenta capturar cookies
+      const cookies = await pollCookies(authWindow.webContents.session);
+      // resto da lógica...
+    }
+  } catch (e) {
+    // tratamento de erro...
+  }
+}
+
     }
     navigateSequence();
 
