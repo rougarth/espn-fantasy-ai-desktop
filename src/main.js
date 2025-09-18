@@ -138,25 +138,29 @@ async function fetchESPN(url, extraHeaders = {}) {
 }
 ipcMain.handle('espn:getLeagues', async () => {
   const y = currentYear();
+  
+  // ENDPOINT CORRETO que funciona
   const url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues?view=mTeam`;
+  
   const res = await fetchESPN(url, { 'Accept': 'application/json' } );
-  // ...resto do código
+  
+  if (res && res.ok && res.data) {
+    // Filtra apenas ligas onde o usuário é membro
+    const userLeagues = res.data.filter(league => 
+      league.members && league.members.length > 0
+    );
+    
+    return { 
+      ok: true, 
+      data: userLeagues, 
+      status: res.status, 
+      contentType: res.contentType 
+    };
+  }
+  
+  return res;
 });
 
-    if (res && res.ok && Array.isArray(res.data)) {
-      const active = res.data.filter(l => {
-        const s = l.seasonId ?? l.season ?? l.seasonYear ?? l.season_id ?? null;
-        return s === y || s === y - 1;
-      });
-      return { ok:true, data: active, status: res.status, contentType: res.contentType };
-    }
-    if (res && res.reason === 'invalid') return res;
-  }
-  const probeUrl = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/players?view=players_wl&limit=1`;
-  const probe = await fetchESPN(probeUrl, { 'Accept': 'application/json' });
-  if (probe && probe.ok) return { ok:true, data: [], status: probe.status, contentType: probe.contentType, note: 'Autenticado, mas sem ligas retornadas agora.' };
-  return { ok:false, reason:'indisponivel', message:'Não foi possível obter suas ligas agora (HTML/redirecionamento). Clique em Conectar com ESPN e faça login novamente.' };
-});
 
 ipcMain.handle('espn:getTeams', async (_e, leagueId) => {
   const y = currentYear();
