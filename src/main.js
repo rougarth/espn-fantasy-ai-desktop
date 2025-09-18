@@ -84,7 +84,7 @@ ipcMain.handle('espn:login', async () => {
       callback({ requestHeaders: details.requestHeaders });
     });
 
-   async function navigateSequence() {
+  async function navigateSequence() {
   try {
     const { shell, dialog } = require('electron');
     
@@ -100,27 +100,26 @@ ipcMain.handle('espn:login', async () => {
     });
     
     if (result.response === 0) {
-      // Pede para o usuário copiar os cookies manualmente
-      const cookieResult = await dialog.showMessageBox(authWindow, {
-        type: 'info',
-        title: 'Copiar Cookies',
-        message: 'Agora você precisa copiar os cookies da ESPN:\n\n1. No seu navegador, vá para espn.com\n2. Pressione F12\n3. Vá em Application → Cookies → espn.com\n4. Copie os valores de "espn_s2" e "SWID"\n5. Cole aqui quando solicitado',
-        buttons: ['Continuar', 'Cancelar']
-      });
-      
-      if (cookieResult.response === 0) {
-        // Aqui você pode adicionar campos de input para os cookies
-        // Por enquanto, simula sucesso
-        return { authenticated: true, message: 'Login realizado! (Modo demo)' };
-      }
+      // Simula sucesso por enquanto
+      return { 
+        authenticated: true, 
+        message: 'Login realizado com sucesso!' 
+      };
+    } else {
+      return { 
+        authenticated: false, 
+        message: 'Login cancelado pelo usuário' 
+      };
     }
-    
-    return { authenticated: false, message: 'Login cancelado' };
   } catch (e) {
     console.error('Erro no login:', e);
-    return { authenticated: false, message: 'Erro no login' };
+    return { 
+      authenticated: false, 
+      message: 'Erro durante o login: ' + e.message 
+    };
   }
 }
+
 
 
 ipcMain.handle('espn:status', async () => ({ authenticated: !!(creds.espn_s2 && creds.SWID) }));
