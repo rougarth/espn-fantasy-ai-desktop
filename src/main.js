@@ -109,7 +109,7 @@ ipcMain.handle('espn:login', async () => {
   }
 }
 
-    }
+  
     navigateSequence();
 
     let tries = 0;
