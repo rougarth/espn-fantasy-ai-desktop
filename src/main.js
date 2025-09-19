@@ -84,7 +84,7 @@ ipcMain.handle('espn:login', async () => {
       callback({ requestHeaders: details.requestHeaders });
     });
 
-  async function navigateSequence() {
+ async function navigateSequence() {
   try {
     const { shell, dialog } = require('electron');
     
@@ -119,7 +119,6 @@ ipcMain.handle('espn:login', async () => {
     };
   }
 }
-
 
 
 ipcMain.handle('espn:status', async () => ({ authenticated: !!(creds.espn_s2 && creds.SWID) }));
