@@ -73,12 +73,13 @@ function cookieHeaderValue(){
 }
 
 // Função separada para navegação
+// Função separada para navegação
 async function navigateSequence() {
   try {
     const { shell, dialog } = require('electron');
     
     // Abre ESPN no browser padrão
-    await shell.openExternal('https://www.espn.com/login/');
+    await shell.openExternal('https://www.espn.com/login/' );
     
     // Mostra instruções
     const result = await dialog.showMessageBox(authWindow, {
@@ -89,16 +90,29 @@ async function navigateSequence() {
     });
     
     if (result.response === 0) {
-      return { 
-        authenticated: true, 
-        message: 'Login realizado com sucesso!' 
-      };
-    } else {
-      return { 
-        authenticated: false, 
-        message: 'Login cancelado pelo usuário' 
-      };
+      // Pede os cookies manualmente
+      const cookieDialog = await dialog.showMessageBox(authWindow, {
+        type: 'info',
+        title: 'Copiar Cookies da ESPN',
+        message: 'Agora você precisa copiar os cookies:\n\n1. No seu navegador, vá para espn.com\n2. Pressione F12 (DevTools)\n3. Vá em Application → Cookies → espn.com\n4. Copie o valor de "espn_s2"\n5. Copie o valor de "SWID"\n\nVamos pedir esses valores agora.',
+        buttons: ['Continuar', 'Cancelar']
+      });
+      
+      if (cookieDialog.response === 0) {
+        // Aqui você pode implementar input dialogs
+        // Por enquanto, retorna sucesso para testar
+        return { 
+          authenticated: true, 
+          message: 'Login realizado! (Cookies precisam ser implementados)',
+          needsCookies: true
+        };
+      }
     }
+    
+    return { 
+      authenticated: false, 
+      message: 'Login cancelado pelo usuário' 
+    };
   } catch (e) {
     console.error('Erro no login:', e);
     return { 
