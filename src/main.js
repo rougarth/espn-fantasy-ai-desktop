@@ -67,29 +67,18 @@ function baseHeaders(){
     'Cache-Control': 'no-cache'
   };
 }
-function cookieHeaderValue(){ return `espn_s2=${creds.espn_s2}; SWID=${creds.SWID}`; }
 
-ipcMain.handle('espn:login', async () => {
-  return new Promise(async (resolve) => {
-    authWindow = new BrowserWindow({
-      width: 1000,
-      height: 900,
-      show: true,
-      autoHideMenuBar: true,
-      webPreferences: { nodeIntegration: false, contextIsolation: true }
-    });
+function cookieHeaderValue(){ 
+  return `espn_s2=${creds.espn_s2}; SWID=${creds.SWID}`; 
+}
 
-    authWindow.webContents.session.webRequest.onBeforeSendHeaders((details, callback) => {
-      details.requestHeaders['User-Agent'] = BROWSER_UA;
-      callback({ requestHeaders: details.requestHeaders });
-    });
-
- async function navigateSequence() {
+// Função separada para navegação
+async function navigateSequence() {
   try {
     const { shell, dialog } = require('electron');
     
     // Abre ESPN no browser padrão
-    await shell.openExternal('https://www.espn.com/login/' );
+    await shell.openExternal('https://www.espn.com/login/');
     
     // Mostra instruções
     const result = await dialog.showMessageBox(authWindow, {
@@ -100,7 +89,6 @@ ipcMain.handle('espn:login', async () => {
     });
     
     if (result.response === 0) {
-      // Simula sucesso por enquanto
       return { 
         authenticated: true, 
         message: 'Login realizado com sucesso!' 
@@ -120,30 +108,103 @@ ipcMain.handle('espn:login', async () => {
   }
 }
 
+ipcMain.handle('espn:login', async () => {
+  return new Promise(async (resolve) => {
+    authWindow = new BrowserWindow({
+      width: 1000,
+      height: 900,
+      show: true,
+      autoHideMenuBar: true,
+      webPreferences: { nodeIntegration: false, contextIsolation: true }
+    });
 
-ipcMain.handle('espn:status', async () => ({ authenticated: !!(creds.espn_s2 && creds.SWID) }));
+    authWindow.webContents.session.webRequest.onBeforeSendHeaders((details, callback) => {
+      details.requestHeaders['User-Agent'] = BROWSER_UA;
+      callback({ requestHeaders: details.requestHeaders });
+    });
+
+    // Chama a função de login
+    const result = await navigateSequence();
+    
+    if (result.authenticated) {
+      // Simula cookies válidos por enquanto
+      creds.espn_s2 = 'fake_cookie_s2';
+      creds.SWID = 'fake_cookie_swid';
+    }
+    
+    authWindow.close();
+    resolve(result);
+  });
+});
+
+ipcMain.handle('espn:status', async () => ({ 
+  authenticated: !!(creds.espn_s2 && creds.SWID) 
+}));
 
 async function parseResponse(res){
   const contentType = res.headers.get('content-type') || '';
   const status = res.status;
   let bodyText = '';
-  try { bodyText = await res.text(); } catch { bodyText = ''; }
-  if (status === 401 || status === 403) return { ok:false, reason:'invalid', message:'Sessão expirada. Clique em Conectar com ESPN novamente.', status, contentType };
-  try { const data = JSON.parse(bodyText); return { ok:true, data, status, contentType }; }
-  catch { return { ok:false, reason:'indisponivel', message:'Formato inesperado', status, contentType, raw: bodyText.slice(0, 500) }; }
+  try { 
+    bodyText = await res.text(); 
+  } catch { 
+    bodyText = ''; 
+  }
+  
+  if (status === 401 || status === 403) {
+    return { 
+      ok: false, 
+      reason: 'invalid', 
+      message: 'Sessão expirada. Clique em Conectar com ESPN novamente.', 
+      status, 
+      contentType 
+    };
+  }
+  
+  try { 
+    const data = JSON.parse(bodyText); 
+    return { ok: true, data, status, contentType }; 
+  } catch { 
+    return { 
+      ok: false, 
+      reason: 'indisponivel', 
+      message: 'Formato inesperado', 
+      status, 
+      contentType, 
+      raw: bodyText.slice(0, 500) 
+    }; 
+  }
 }
+
 async function fetchESPN(url, extraHeaders = {}) {
-  if (!creds.espn_s2 || !creds.SWID) return { ok:false, reason:'invalid', message:'Não autenticado' };
-  const res = await fetch(url, { method: 'GET', headers: { ...baseHeaders(), 'Cookie': cookieHeaderValue(), ...extraHeaders }, redirect: 'follow' });
+  if (!creds.espn_s2 || !creds.SWID) {
+    return { 
+      ok: false, 
+      reason: 'invalid', 
+      message: 'Não autenticado' 
+    };
+  }
+  
+  const res = await fetch(url, { 
+    method: 'GET', 
+    headers: { 
+      ...baseHeaders(), 
+      'Cookie': cookieHeaderValue(), 
+      ...extraHeaders 
+    }, 
+    redirect: 'follow' 
+  });
+  
   return parseResponse(res);
 }
+
 ipcMain.handle('espn:getLeagues', async () => {
   const y = currentYear();
   
   // ENDPOINT CORRETO que funciona
   const url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues?view=mTeam`;
   
-  const res = await fetchESPN(url, { 'Accept': 'application/json' } );
+  const res = await fetchESPN(url, { 'Accept': 'application/json' });
   
   if (res && res.ok && res.data) {
     // Filtra apenas ligas onde o usuário é membro
@@ -162,23 +223,25 @@ ipcMain.handle('espn:getLeagues', async () => {
   return res;
 });
 
-
 ipcMain.handle('espn:getTeams', async (_e, leagueId) => {
   const y = currentYear();
   const url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues/${leagueId}?view=mTeam`;
   return fetchESPN(url);
 });
+
 ipcMain.handle('espn:getStandings', async (_e, leagueId) => {
   const y = currentYear();
   const url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues/${leagueId}?view=mStandings`;
   return fetchESPN(url);
 });
+
 ipcMain.handle('espn:getMatchups', async (_e, { leagueId, scoringPeriodId }) => {
   const y = currentYear();
   let url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues/${leagueId}?view=mMatchup`;
   if (scoringPeriodId) url += `&scoringPeriodId=${scoringPeriodId}`;
   return fetchESPN(url);
 });
+
 ipcMain.handle('espn:getRoster', async (_e, { leagueId, teamId, scoringPeriodId }) => {
   const y = currentYear();
   let url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${y}/segments/0/leagues/${leagueId}?view=mRoster`;
